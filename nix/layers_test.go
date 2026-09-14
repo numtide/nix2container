@@ -270,3 +270,56 @@ func TestLayerFromTarRejectsHardLinks(t *testing.T) {
 	_, err = NewLayersWithOptions([]string{label}, 1, LayerOptions{Tars: []types.TarPath{{Path: label, Tar: archive}}}, v1.History{})
 	assert.ErrorContains(t, err, "only regular files, directories and symlinks")
 }
+
+// A directory listed in ensureDirs takes the requested owner and mode
+// when the source has it, and is created when the source lacks it;
+// other directories keep the source's owner.
+func TestEnsureDirs(t *testing.T) {
+	root := t.TempDir()
+	archive := filepath.Join(root, "layer.tar")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(f)
+	for _, h := range []*tar.Header{
+		{Name: "./", Typeflag: tar.TypeDir, Mode: 0o755},
+		{Name: "./nix/", Typeflag: tar.TypeDir, Mode: 0o755},
+		{Name: "./nix/var/", Typeflag: tar.TypeDir, Mode: 0o755},
+	} {
+		h.Format = tar.FormatGNU
+		if err := tw.WriteHeader(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tw.Close() // nolint: errcheck
+	f.Close()  // nolint: errcheck
+	label := "/nix/store/00000000000000000000000000000000-tree"
+	paths := types.Paths{{Path: label, Tar: archive, Options: &types.PathOptions{
+		Rewrite: types.Rewrite{Regex: "^" + label, Repl: ""},
+		EnsureDirs: []types.EnsureDir{
+			{Path: label, Dir: "nix", Uid: 999, Gid: 0, Mode: "0755"},
+			{Path: label, Dir: "nix/store", Uid: 999, Gid: 0, Mode: "0755"},
+		},
+	}}}
+	r := TarPaths(paths)
+	defer r.Close() // nolint: errcheck
+	tr := tar.NewReader(r)
+	got := map[string]*tar.Header{}
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			break
+		}
+		got[h.Name] = h
+	}
+	for _, name := range []string{"/nix", "/nix/store"} {
+		h := got[name]
+		if h == nil || h.Typeflag != tar.TypeDir || h.Uid != 999 || h.Gid != 0 || h.Mode != 0o755 {
+			t.Fatalf("%s: got %+v, want dir 999:0 0755", name, h)
+		}
+	}
+	if h := got["/nix/var"]; h == nil || h.Uid != 0 {
+		t.Fatalf("/nix/var must keep the archive's owner: %+v", h)
+	}
+}
