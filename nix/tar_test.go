@@ -1,6 +1,7 @@
 package nix
 
 import (
+	"archive/tar"
 	"bytes"
 	"fmt"
 	"os"
@@ -101,5 +102,29 @@ func BenchmarkTarPathsSum(b *testing.B) {
 		if _, _, err := TarPathsSum(paths); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// Invalid orMode values must fail loudly at tar time, not be silently
+// misparsed: Sscanf-style laxity here corrupts header modes (a negative
+// mode even flips archive/tar to GNU base-256 encoding).
+func TestTarPermsOrModeInvalid(t *testing.T) {
+	for _, orMode := range []string{"0o311", "-0200", "40755", "8"} {
+		t.Run(orMode, func(t *testing.T) {
+			paths := types.Paths{{
+				Path: "../data/layer1/file1",
+				Options: &types.PathOptions{
+					Perms: []types.Perm{{Regex: ".*", OrMode: orMode}},
+				},
+			}}
+			r := TarPaths(paths)
+			defer r.Close() // nolint: errcheck
+			tr := tar.NewReader(r)
+			var err error
+			for err == nil {
+				_, err = tr.Next()
+			}
+			assert.ErrorContains(t, err, "invalid orMode")
+		})
 	}
 }
