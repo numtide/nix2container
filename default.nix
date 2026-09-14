@@ -243,6 +243,11 @@ let
     # The path itself is still added; only the listed subtrees are
     # skipped, at emission time, with no pruned copy of the path.
     excludes ? [],
+    # A JSON file with the same list `perms` would be written to, for
+    # callers whose perms come out of a build (read from a tar's
+    # headers, say) rather than being known at eval time. Exactly one
+    # of perms and permsFile.
+    permsFile ? null,
     # The maximun number of layer to create. This is based on the
     # store path "popularity" as described in
     # https://grahamc.com/blog/nix-and-layered-docker-images
@@ -269,6 +274,9 @@ let
   }:
   assert l.assertMsg (compressor == null || reproducible)
     "nix2container.buildLayer: compressor requires reproducible = true";
+  }:
+  assert l.assertMsg (permsFile == null || perms == [])
+    "nix2container.buildLayer: perms and permsFile are exclusive";
   let
     subcommand = if reproducible
       then "layers-from-reproducible-storepaths"
@@ -287,8 +295,8 @@ let
     rewritesFile = pkgs.writeText "rewrites.json" (l.toJSON rewrites);
     rewritesFlag = "--rewrites ${rewritesFile}";
 
-    permsFile = pkgs.writeText "perms.json" (l.toJSON perms);
-    permsFlag = l.optionalString (perms != []) "--perms ${permsFile}";
+    permsJson = if permsFile != null then permsFile else pkgs.writeText "perms.json" (l.toJSON perms);
+    permsFlag = l.optionalString (perms != [] || permsFile != null) "--perms ${permsJson}";
 
     tarsFile = pkgs.writeText "tars.json" (l.toJSON (map (t: { path = toString t.path; tar = toString t.tar; }) fromTar));
     tarsFlag = l.optionalString (fromTar != []) "--tars ${tarsFile}";

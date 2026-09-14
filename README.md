@@ -314,6 +314,9 @@ Function arguments are:
     ... ]; }` with paths relative to the store path. The store path is
     still added with the rest of its content. This avoids a pruned copy
     of the path, which would be a new store path with a new closure.
+- **`permsFile`** (defaults to `null`): a JSON file holding the list
+    `perms` would hold, for permissions computed by a build rather than
+    known at eval time. Exactly one of `perms` and `permsFile`.
 
     Each element of this permission list is a dict such as
     ```
