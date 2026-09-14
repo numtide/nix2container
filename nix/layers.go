@@ -11,7 +11,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func getPaths(storePaths []string, parents []types.Layer, rewrites []types.RewritePath, exclude string, permPaths []types.PermPath) types.Paths {
+// LayerOptions is what shapes the paths of a layer beyond the store
+// paths themselves. A zero value gives a plain layer.
+type LayerOptions struct {
+	// Layers whose paths are left out of this one.
+	Parents []types.Layer
+	// Path rewrites, to move a store path's content elsewhere in the image.
+	Rewrites []types.RewritePath
+	// A store path to leave out, even when it is in the closure.
+	Exclude string
+	// Ownership and mode overrides.
+	Perms []types.PermPath
+}
+
+func getPaths(storePaths []string, o LayerOptions) types.Paths {
+	parents, rewrites, exclude, permPaths := o.Parents, o.Rewrites, o.Exclude, o.Perms
 	var paths types.Paths
 	for _, p := range storePaths {
 		path := types.Path{
@@ -116,9 +130,9 @@ func maxLayersGroups(paths types.Paths, maxLayers int) (groups []types.Paths) {
 // splitGroups filters each group like getPaths does and drops the
 // groups left empty, for instance when all their paths are already in
 // a parent layer.
-func splitGroups(split [][]string, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath) (groups []types.Paths) {
+func splitGroups(split [][]string, o LayerOptions) (groups []types.Paths) {
 	for _, storePaths := range split {
-		paths := getPaths(storePaths, parents, rewrites, exclude, perms)
+		paths := getPaths(storePaths, o)
 		if len(paths) > 0 {
 			groups = append(groups, paths)
 		}
@@ -126,48 +140,57 @@ func splitGroups(split [][]string, parents []types.Layer, rewrites []types.Rewri
 	return groups
 }
 
-func NewLayers(storePaths []string, maxLayers int, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) ([]types.Layer, error) {
-	paths := getPaths(storePaths, parents, rewrites, exclude, perms)
-	return newLayers(maxLayersGroups(paths, maxLayers), "", history)
+// NewLayersWithOptions builds the layers of storePaths, at most
+// maxLayers of them, shaped by o.
+func NewLayersWithOptions(storePaths []string, maxLayers int, o LayerOptions, history v1.History) ([]types.Layer, error) {
+	return newLayers(maxLayersGroups(getPaths(storePaths, o), maxLayers), "", history)
 }
 
-// NewLayersCompressed groups the paths like NewLayers, then tars and
-// compresses each layer to blobDir at build time. compressor names an
-// entry of the compressors table, such as "gzip". Each layer carries
-// the compressed digest, the uncompressed DiffIDs, the blob file as
-// LayerPath and the matching media type. With an empty compressor, it
-// returns the result of NewLayers.
-func NewLayersCompressed(storePaths []string, maxLayers int, compressor, blobDir string, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) ([]types.Layer, error) {
+// NewLayersNonReproducibleWithOptions is NewLayersWithOptions with each
+// layer tar written to tarDirectory.
+func NewLayersNonReproducibleWithOptions(storePaths []string, maxLayers int, tarDirectory string, o LayerOptions, history v1.History) ([]types.Layer, error) {
+	return newLayers(maxLayersGroups(getPaths(storePaths, o), maxLayers), tarDirectory, history)
+}
+
+// NewLayersCompressed groups the paths like NewLayersWithOptions, then
+// tars and compresses each layer to blobDir at build time. compressor
+// names an entry of the compressors table, such as "gzip". Each layer
+// carries the compressed digest, the uncompressed DiffIDs, the blob
+// file as LayerPath and the matching media type. With an empty
+// compressor, it returns the result of NewLayersWithOptions.
+func NewLayersCompressed(storePaths []string, maxLayers int, compressor, blobDir string, o LayerOptions, history v1.History) ([]types.Layer, error) {
 	if compressor == "" {
-		return NewLayers(storePaths, maxLayers, parents, rewrites, exclude, perms, history)
+		return NewLayersWithOptions(storePaths, maxLayers, o, history)
 	}
-	paths := getPaths(storePaths, parents, rewrites, exclude, perms)
-	return newLayersCompressed(maxLayersGroups(paths, maxLayers), compressor, blobDir, history)
-}
-
-func NewLayersNonReproducible(storePaths []string, maxLayers int, tarDirectory string, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) (layers []types.Layer, err error) {
-	paths := getPaths(storePaths, parents, rewrites, exclude, perms)
-	return newLayers(maxLayersGroups(paths, maxLayers), tarDirectory, history)
+	return newLayersCompressed(maxLayersGroups(getPaths(storePaths, o), maxLayers), compressor, blobDir, history)
 }
 
 // NewLayersFromSplit creates one layer per group of split, in order.
 // The split is not checked against a closure: see closure.SplitFromFile.
-func NewLayersFromSplit(split [][]string, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) ([]types.Layer, error) {
-	return newLayers(splitGroups(split, parents, rewrites, exclude, perms), "", history)
+func NewLayersFromSplit(split [][]string, o LayerOptions, history v1.History) ([]types.Layer, error) {
+	return newLayers(splitGroups(split, o), "", history)
 }
 
 // NewLayersCompressedFromSplit is NewLayersFromSplit with each layer
 // compressed to blobDir, like NewLayersCompressed. With an empty
 // compressor, it returns the result of NewLayersFromSplit.
-func NewLayersCompressedFromSplit(split [][]string, compressor, blobDir string, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) ([]types.Layer, error) {
+func NewLayersCompressedFromSplit(split [][]string, compressor, blobDir string, o LayerOptions, history v1.History) ([]types.Layer, error) {
 	if compressor == "" {
-		return NewLayersFromSplit(split, parents, rewrites, exclude, perms, history)
+		return NewLayersFromSplit(split, o, history)
 	}
-	return newLayersCompressed(splitGroups(split, parents, rewrites, exclude, perms), compressor, blobDir, history)
+	return newLayersCompressed(splitGroups(split, o), compressor, blobDir, history)
 }
 
-func NewLayersNonReproducibleFromSplit(split [][]string, tarDirectory string, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) ([]types.Layer, error) {
-	return newLayers(splitGroups(split, parents, rewrites, exclude, perms), tarDirectory, history)
+func NewLayersNonReproducibleFromSplit(split [][]string, tarDirectory string, o LayerOptions, history v1.History) ([]types.Layer, error) {
+	return newLayers(splitGroups(split, o), tarDirectory, history)
+}
+
+func NewLayers(storePaths []string, maxLayers int, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) ([]types.Layer, error) {
+	return NewLayersWithOptions(storePaths, maxLayers, LayerOptions{Parents: parents, Rewrites: rewrites, Exclude: exclude, Perms: perms}, history)
+}
+
+func NewLayersNonReproducible(storePaths []string, maxLayers int, tarDirectory string, parents []types.Layer, rewrites []types.RewritePath, exclude string, perms []types.PermPath, history v1.History) (layers []types.Layer, err error) {
+	return NewLayersNonReproducibleWithOptions(storePaths, maxLayers, tarDirectory, LayerOptions{Parents: parents, Rewrites: rewrites, Exclude: exclude, Perms: perms}, history)
 }
 
 func isPathInLayers(layers []types.Layer, path types.Path) bool {

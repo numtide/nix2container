@@ -92,11 +92,12 @@ var layersReproducibleCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		blobDir := filepath.Join(filepath.Dir(output), "blobs")
+		opts := nix.LayerOptions{Parents: parents, Rewrites: rewrites, Exclude: ignore, Perms: perms}
 		var layers []types.Layer
 		if layersJSONFilepath != "" {
-			layers, err = nix.NewLayersCompressedFromSplit(split, compressor, blobDir, parents, rewrites, ignore, perms, history)
+			layers, err = nix.NewLayersCompressedFromSplit(split, compressor, blobDir, opts, history)
 		} else {
-			layers, err = nix.NewLayersCompressed(storepaths, maxLayers, compressor, blobDir, parents, rewrites, ignore, perms, history)
+			layers, err = nix.NewLayersCompressed(storepaths, maxLayers, compressor, blobDir, opts, history)
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err)
@@ -162,11 +163,12 @@ var layersNonReproducibleCmd = &cobra.Command{
 			}
 		}
 
+		opts := nix.LayerOptions{Parents: parents, Rewrites: rewrites, Exclude: ignore, Perms: perms}
 		var layers []types.Layer
 		if layersJSONFilepath != "" {
-			layers, err = nix.NewLayersNonReproducibleFromSplit(split, tarDirectory, parents, rewrites, ignore, perms, history)
+			layers, err = nix.NewLayersNonReproducibleFromSplit(split, tarDirectory, opts, history)
 		} else {
-			layers, err = nix.NewLayersNonReproducible(storepaths, maxLayers, tarDirectory, parents, rewrites, ignore, perms, history)
+			layers, err = nix.NewLayersNonReproducibleWithOptions(storepaths, maxLayers, tarDirectory, opts, history)
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err)

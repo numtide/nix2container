@@ -88,13 +88,13 @@ func TestNewLayersCompressed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	same, err := NewLayersCompressed(paths, 2, "", t.TempDir(), []types.Layer{}, []types.RewritePath{}, "", []types.PermPath{}, v1.History{})
+	same, err := NewLayersCompressed(paths, 2, "", t.TempDir(), LayerOptions{}, v1.History{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	assert.Equal(t, plain, same)
 
-	gz, err := NewLayersCompressed(paths, 2, "gzip", t.TempDir(), []types.Layer{}, []types.RewritePath{}, "", []types.PermPath{}, v1.History{})
+	gz, err := NewLayersCompressed(paths, 2, "gzip", t.TempDir(), LayerOptions{}, v1.History{})
 	if err != nil {
 		t.Fatal(err)
 	}
