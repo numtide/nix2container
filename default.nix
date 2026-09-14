@@ -238,6 +238,11 @@ let
     # carried at a fixed owner and mode, created when the source lacks
     # them, for instance the /nix and /nix/store above a shipped store.
     ensureDirs ? [],
+    # Subtrees left out of the layer, as a list of
+    # { path = <store path>; excludes = [ "relative/path" ... ]; }.
+    # The path itself is still added; only the listed subtrees are
+    # skipped, at emission time, with no pruned copy of the path.
+    excludes ? [],
     # The maximun number of layer to create. This is based on the
     # store path "popularity" as described in
     # https://grahamc.com/blog/nix-and-layered-docker-images
@@ -290,6 +295,8 @@ let
 
     ensureDirsFile = pkgs.writeText "ensure-dirs.json" (l.toJSON (map (d: d // { path = toString d.path; }) ensureDirs));
     ensureDirsFlag = l.optionalString (ensureDirs != []) "--ensure-dirs ${ensureDirsFile}";
+    excludesFile = pkgs.writeText "excludes.json" (l.toJSON excludes);
+    excludesFlag = l.optionalString (excludes != []) "--excludes ${excludesFile}";
 
     historyFile = pkgs.writeText "history.json" (l.toJSON metadata);
     historyFlag = l.optionalString (metadata != {}) "--history ${historyFile}";
@@ -311,6 +318,7 @@ let
         ${permsFlag} \
         ${tarsFlag} \
         ${ensureDirsFlag} \
+        ${excludesFlag} \
         ${historyFlag} \
         ${compressorFlag} \
         ${tarDirectory} \

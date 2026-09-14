@@ -309,6 +309,11 @@ Function arguments are:
     carried at that owner and mode, and created when the source lacks
     it, for instance `/nix` and `/nix/store` above a shipped store, which
     no store path contains.
+- **`excludes`** (defaults to `[]`): subtrees of a store path left out
+    of the layer, as `{ path = <store path>; excludes = [ "share/doc"
+    ... ]; }` with paths relative to the store path. The store path is
+    still added with the rest of its content. This avoids a pruned copy
+    of the path, which would be a new store path with a new closure.
 
     Each element of this permission list is a dict such as
     ```
