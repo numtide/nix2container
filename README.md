@@ -90,6 +90,11 @@ Function arguments are:
     image of this image; use `pullImage` or `pullImageFromManifest` to
     supply this.
 
+- **`fromImageEnv`** (defaults to `false`): keep the `Env` entries of
+    `fromImage`. An entry is dropped when `config` sets the same
+    variable, and the entries of `config` come last. The other fields
+    of the base configuration are not inherited.
+
 - **`includeStorePaths`** (defaults to `true`): see
     `buildLayer.includeStorePaths`. It applies to the image layers and
     not to layers added with the `buildImage.layers` attribute.
