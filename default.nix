@@ -234,6 +234,10 @@ let
     # the archive headers (a customisation layer built under fakeroot,
     # whose headers are the only place those exist).
     fromTar ? [],
+    # [ { path = <store path>; dir; uid; gid; mode; } ]: directories
+    # carried at a fixed owner and mode, created when the source lacks
+    # them, for instance the /nix and /nix/store above a shipped store.
+    ensureDirs ? [],
     # The maximun number of layer to create. This is based on the
     # store path "popularity" as described in
     # https://grahamc.com/blog/nix-and-layered-docker-images
@@ -266,6 +270,9 @@ let
     tarsFile = pkgs.writeText "tars.json" (l.toJSON (map (t: { path = toString t.path; tar = toString t.tar; }) fromTar));
     tarsFlag = l.optionalString (fromTar != []) "--tars ${tarsFile}";
 
+    ensureDirsFile = pkgs.writeText "ensure-dirs.json" (l.toJSON (map (d: d // { path = toString d.path; }) ensureDirs));
+    ensureDirsFlag = l.optionalString (ensureDirs != []) "--ensure-dirs ${ensureDirsFile}";
+
     historyFile = pkgs.writeText "history.json" (l.toJSON metadata);
     historyFlag = l.optionalString (metadata != {}) "--history ${historyFile}";
 
@@ -282,6 +289,7 @@ let
         ${rewritesFlag} \
         ${permsFlag} \
         ${tarsFlag} \
+        ${ensureDirsFlag} \
         ${historyFlag} \
         ${tarDirectory} \
         ${toString (map (l: l + "/layers.json") layers)}

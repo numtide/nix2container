@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -127,4 +129,87 @@ func addTarToGraph(graph *fileNode, p types.Path, f *os.File) error {
 		}
 	}
 	return nil
+}
+
+// ensuredDirInfo is the FileInfo of a synthesised directory entry.
+type ensuredDirInfo struct {
+	name string
+	mode os.FileMode
+}
+
+func (fi ensuredDirInfo) Name() string       { return fi.name }
+func (fi ensuredDirInfo) Size() int64        { return 0 }
+func (fi ensuredDirInfo) Mode() os.FileMode  { return fi.mode | os.ModeDir }
+func (fi ensuredDirInfo) ModTime() time.Time { return time.Time{} }
+func (fi ensuredDirInfo) IsDir() bool        { return true }
+func (fi ensuredDirInfo) Sys() interface{}   { return nil }
+
+// ensuredDirSource has no bytes; the directory's ownership rides in the
+// synthetic perms entry addEnsuredDirs attaches.
+type ensuredDirSource struct{}
+
+func (ensuredDirSource) readlink() (string, error) { return "", nil }
+func (ensuredDirSource) open() (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+
+// addEnsuredDirs adds (or re-owns) the directories p.Options.EnsureDirs
+// names, after the path's own entries are in the graph: an existing
+// node keeps its place and takes the requested mode and owner, a
+// missing one is created. Ownership is expressed as one exact-path
+// perms entry per directory so it is applied by the same code path as
+// every other owner override.
+func addEnsuredDirs(graph *fileNode, p types.Path) error {
+	if p.Options == nil {
+		return nil
+	}
+	for _, ed := range p.Options.EnsureDirs {
+		mode, err := parseOctalMode(ed.Mode)
+		if err != nil {
+			return fmt.Errorf("ensureDirs %q: %w", ed.Dir, err)
+		}
+		srcPath := p.Path + "/" + strings.Trim(ed.Dir, "/")
+		perm := types.Perm{Regex: "^" + regexpQuoteMeta(srcPath) + "$", Uid: ed.Uid, Gid: ed.Gid, Mode: fmt.Sprintf("%o", mode)}
+		opts := &types.PathOptions{Rewrite: p.Options.Rewrite, Perms: append(append([]types.Perm{}, p.Options.Perms...), perm)}
+		var info os.FileInfo = ensuredDirInfo{name: path.Base(srcPath), mode: os.FileMode(mode)}
+		if node := findNode(graph, filePathToTarPath(srcPath, opts)); node != nil && node.info != nil {
+			if !(*node.info).IsDir() {
+				return fmt.Errorf("ensureDirs %q: %s is not a directory in the layer", ed.Dir, srcPath)
+			}
+			node.info = &info
+			node.options = opts
+			node.srcPath = srcPath
+			node.src = ensuredDirSource{}
+			continue
+		}
+		if err := addFileToGraph(graph, srcPath, &info, opts, ensuredDirSource{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseOctalMode(s string) (int64, error) {
+	if s == "" {
+		return 0o755, nil
+	}
+	return strconv.ParseInt(s, 8, 64)
+}
+
+func regexpQuoteMeta(s string) string { return regexp.QuoteMeta(s) }
+
+// findNode returns the graph node at dstPath, or nil.
+func findNode(root *fileNode, dstPath string) *fileNode {
+	if dstPath == "" {
+		return nil
+	}
+	current := root
+	for _, part := range splitPath(dstPath) {
+		next, ok := current.contents[part]
+		if !ok {
+			return nil
+		}
+		current = next
+	}
+	return current
 }
