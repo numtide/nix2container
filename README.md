@@ -1,13 +1,30 @@
 # nix2container
 
-nix2container provides an efficient container development workflow
-with images built by Nix: it doesn't write tarballs to the Nix store
-and allows to skip already pushed layers (without having to rebuild
-them).
-
-This is based on ideas developed in [this blog
-post](https://lewo.abesis.fr/posts/nix-build-container-image/).
-
+> **This is a fork of [nlewo/nix2container](https://github.com/nlewo/nix2container).** Its `next` branch is upstream `master` with the pull requests below merged. All of them are open against the original repository, and the intention is that they are merged there. This fork is not maintained as a separate project: it carries nothing that is not a pull request upstream, `master` tracks upstream `master`, and once the pull requests land upstream the fork has no reason to exist.
+>
+> What the merged pull requests change, and why:
+>
+> - [#207](https://github.com/nlewo/nix2container/pull/207): the layers taken from `fromImage` record their size. Without it, a push had to read the whole blob to learn a number the manifest already carries.
+> - [#209](https://github.com/nlewo/nix2container/pull/209): an image with no layers serialises `"layers": []` instead of `null`, so every reader of the image JSON can iterate the field without a special case.
+> - [#219](https://github.com/nlewo/nix2container/pull/219): with `reproducible = false`, each layer tar written to the store held the paths of every layer, not its own. The digests were right; the files were not.
+> - [#220](https://github.com/nlewo/nix2container/pull/220): `buildLayer { layersFile }` takes a layer split computed by another tool, so the grouping of the closure is an input rather than something nix2container has to decide well for every image. The `store_layers` of nixpkgs' `streamLayeredImage` is one such input, which gives the same layers as `dockerTools` for the same closure.
+> - [#221](https://github.com/nlewo/nix2container/pull/221): `go.podman.io/image` was imported for one struct, and pulled about a hundred modules with it. A local type reads the one field that was used, and the module graph shrinks from 140 to 42 modules.
+> - [#211](https://github.com/nlewo/nix2container/pull/211): `includeStorePaths = false` ships the listed paths without their runtime closure, for containers whose `/nix/store` is provided at run time. Baking the closure into layers there only duplicates what the mount already has.
+> - [#224](https://github.com/nlewo/nix2container/pull/224): building a layer tar allocated a buffer per file and opened every directory; the blob file was written in 512-byte pieces. One pooled buffer and buffered writes make the tar step about a third faster on trees with many small files, with the same bytes.
+> - [#208](https://github.com/nlewo/nix2container/pull/208): `fromImageEnv = true` merges the base image's `Env` the way nixpkgs' `dockerTools` does: one entry per variable, the image config's value replacing the base's in place. A base that sets `PATH` or CUDA variables no longer has to be repeated by hand. Opt-in, so existing images do not change.
+> - [#210](https://github.com/nlewo/nix2container/pull/210): `perms.orMode` adds permission bits without replacing the mode. A store tree mixes `0444` and `0555` files, and "make it writable" with `mode` alone either drops or grants the execute bit on all of them.
+> - [#222](https://github.com/nlewo/nix2container/pull/222): `compressor = "gzip"` compresses each layer once, at build time, with deterministic output. The compressed digest is then known before the push, so a repush only asks the registry which blobs it lacks, and every builder produces the same bytes. The cost is store space: the output holds the compressed layers.
+> - [#223](https://github.com/nlewo/nix2container/pull/223): `compressor = "zstd"`, for OCI destinations: faster to produce and smaller than gzip.
+> - [#225](https://github.com/nlewo/nix2container/pull/225): gzip layers are compressed with `klauspost/compress`, the dependency #223 already brings, at more than twice the speed of the standard library for the same level. The digests change once.
+> - [#226](https://github.com/nlewo/nix2container/pull/226): `buildLayer { permsFile }` passes a perms list produced by a build, for permissions that live in a store path rather than being known at eval time. `--perms` already took a file.
+> - [#228](https://github.com/nlewo/nix2container/pull/228): a `perms` regex was compiled for every file it was checked against. The two shapes generated perms lists use, an exact path and a subtree, are now matched by string comparison; a path of 42 000 files with 41 entries goes from over half a minute to under three seconds, same digest.
+> - [#230](https://github.com/nlewo/nix2container/pull/230): two refactors with no behaviour change: each leaf of the layer graph carries a *source* it is read through, and the options that shape a layer are one `LayerOptions` struct, so the next three features are one field each rather than one more positional argument on `NewLayers`.
+> - [#231](https://github.com/nlewo/nix2container/pull/231): `buildLayer { fromTar }` takes a tar archive as the content of a store path, with the ownership, modes and modification times of the archive headers. A customisation layer built under fakeroot has those only in the tar it produces; unpacking it into the store throws them away.
+> - [#232](https://github.com/nlewo/nix2container/pull/232): `buildLayer { ensureDirs }` creates directories at a fixed owner and mode when no source path has them: the `/nix` and `/nix/store` above a shipped store, which are the parents of the paths, not their content; one a source has is left as it is.
+> - [#227](https://github.com/nlewo/nix2container/pull/227): `buildLayer { excludes }` leaves subtrees of a store path out of the layer at emission time. Leaving part of a path out used to mean a pruned copy of it, which is a new store path with its own closure.
+> - [#229](https://github.com/nlewo/nix2container/pull/229): the layers of an image are compressed in parallel, at most `GOMAXPROCS` at a time, with the bytes of each layer unchanged; three large layers take the time of the largest one alone.
+>
+> Two things exist only in this merge, and go upstream with whichever of the pull requests concerned lands second: `--layers-json` and `--compressor` together (`NewLayersCompressedFromSplit`; #220 and #222 were written independently), and the `Env` field that #208 reads on the type #221 introduced.
 
 ## Getting started
 
