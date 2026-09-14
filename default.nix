@@ -14,7 +14,7 @@ let
         ./data
       ]);
     };
-    vendorHash = "sha256-pIWHiM19ACPLrlskYjtbmgQ9WPEJ2ZsxLxrZaIAwrTk=";
+    vendorHash = "sha256-zvqmddumygoTyrrGXlhoaTd38Ane0xc4K+v9qan5ows=";
     ldflags = l.optional pkgs.stdenv.hostPlatform.isDarwin
       "-X github.com/nlewo/nix2container/nix.useNixCaseHack=true";
   };
@@ -274,7 +274,6 @@ let
   }:
   assert l.assertMsg (compressor == null || reproducible)
     "nix2container.buildLayer: compressor requires reproducible = true";
-  }:
   assert l.assertMsg (permsFile == null || perms == [])
     "nix2container.buildLayer: perms and permsFile are exclusive";
   let
