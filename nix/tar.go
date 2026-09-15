@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -227,9 +228,16 @@ func TarPaths(paths types.Paths) io.ReadCloser {
 				}
 				continue
 			}
-			err := filepath.Walk(path.Path, func(path string, info os.FileInfo, err error) error {
+			root := path.Path
+			err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 				if err != nil {
 					return fmt.Errorf("failed accessing path %q: %v", path, err)
+				}
+				if options != nil && excluded(root, path, options.Excludes) {
+					if info.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
 				}
 				logrus.Debugf("Walking filesystem: %s", path)
 				return addFileToGraph(graph, path, &info, options, fsSource{path: path})
@@ -271,4 +279,17 @@ func TarPaths(paths types.Paths) io.ReadCloser {
 		}
 	}()
 	return r
+}
+
+func excluded(root, path string, excludes []string) bool {
+	if len(excludes) == 0 || path == root {
+		return false
+	}
+	rel := strings.TrimPrefix(path, root+"/")
+	for _, ex := range excludes {
+		if rel == ex || strings.HasPrefix(rel, ex+"/") {
+			return true
+		}
+	}
+	return false
 }

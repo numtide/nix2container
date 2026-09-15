@@ -4,8 +4,10 @@ import (
 	"archive/tar"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nlewo/nix2container/types"
@@ -127,4 +129,37 @@ func TestTarPermsOrModeInvalid(t *testing.T) {
 			assert.ErrorContains(t, err, "invalid orMode")
 		})
 	}
+}
+
+func TestTarPathsExcludes(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"share/doc/a", "share/doc/b", "share/docs", "bin"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, d, "f"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paths := types.Paths{{Path: root, Options: &types.PathOptions{Excludes: []string{"share/doc", "bin/f"}}}}
+	r := TarPaths(paths)
+	defer r.Close() // nolint: errcheck
+	tr := tar.NewReader(r)
+	var names []string
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, strings.TrimPrefix(hdr.Name, root))
+	}
+	joined := strings.Join(names, "\n")
+	assert.NotContains(t, joined, "/share/doc/")
+	assert.NotContains(t, joined, "/share/doc\n")
+	assert.NotContains(t, joined, "/bin/f")
+	assert.Contains(t, joined, "/share/docs/f")
+	assert.Contains(t, joined, "/bin\n")
 }

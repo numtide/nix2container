@@ -87,6 +87,16 @@ type PathOptions struct {
 	Perms   []Perm  `json:"perms,omitempty"`
 	// Directories to carry at a fixed ownership/mode (see EnsureDir).
 	EnsureDirs []EnsureDir `json:"ensureDirs,omitempty"`
+	// Paths relative to the store path that are left out of the layer,
+	// each with its whole subtree.
+	Excludes []string `json:"excludes,omitempty"`
+}
+
+// ExcludePath lists the subtrees of a store path that are left out of
+// the layer, as paths relative to it.
+type ExcludePath struct {
+	Path     string   `json:"path"`
+	Excludes []string `json:"excludes"`
 }
 
 type Path struct {

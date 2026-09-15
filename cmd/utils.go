@@ -68,3 +68,15 @@ func readEnsureDirsFile(filename string) (ensureDirs []types.EnsureDir, err erro
 	}
 	return
 }
+
+func readExcludesFile(filename string) (excludePaths []types.ExcludePath, err error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return excludePaths, err
+	}
+	err = json.Unmarshal(content, &excludePaths)
+	if err != nil {
+		return excludePaths, err
+	}
+	return
+}
