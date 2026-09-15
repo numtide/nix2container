@@ -94,6 +94,12 @@ Function arguments are:
     `buildLayer.includeStorePaths`. It applies to the image layers and
     not to layers added with the `buildImage.layers` attribute.
 
+- **`fromImageEnv`** (defaults to `false`): keep the `Env` entries of
+    `fromImage`, the way nixpkgs' `dockerTools` does: one entry per
+    variable, in order of first appearance, and a variable `config` sets
+    takes `config`'s value at the position the base gave it. The other
+    fields of the base configuration are not inherited.
+
 - **`maxLayers`** (defaults to `1`): the maximum number of layers to
     create. This is based on the store path "popularity" as described
     in this [blog
