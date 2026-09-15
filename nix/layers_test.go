@@ -148,7 +148,7 @@ func TestNewLayersFromSplit(t *testing.T) {
 		{"../data/tar-directory/file1"},
 		{"../data/layer1/file1"},
 	}
-	layers, err := NewLayersFromSplit(split, []types.Layer{}, []types.RewritePath{}, "", []types.PermPath{}, v1.History{})
+	layers, err := NewLayersFromSplit(split, LayerOptions{}, v1.History{})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -158,7 +158,7 @@ func TestNewLayersFromSplit(t *testing.T) {
 
 	// A group whose paths are all in a parent layer yields no layer.
 	parents := layers[:1]
-	layers, err = NewLayersFromSplit(split, parents, []types.RewritePath{}, "", []types.PermPath{}, v1.History{})
+	layers, err = NewLayersFromSplit(split, LayerOptions{Parents: parents}, v1.History{})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
