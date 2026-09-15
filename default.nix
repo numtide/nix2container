@@ -14,7 +14,7 @@ let
         ./data
       ]);
     };
-    vendorHash = "sha256-xR1nT0Dd5j5cT4Nnd8EQVPQyM9U+dVX/T5uzr6NUmgg=";
+    vendorHash = "sha256-zvqmddumygoTyrrGXlhoaTd38Ane0xc4K+v9qan5ows=";
     ldflags = l.optional pkgs.stdenv.hostPlatform.isDarwin
       "-X github.com/nlewo/nix2container/nix.useNixCaseHack=true";
   };
@@ -296,6 +296,10 @@ let
 
     layersJSON = pkgs.runCommandLocal "layers.json" {} ''
       mkdir $out
+      # Layers are compressed in parallel, up to GOMAXPROCS at a time.
+      # NIX_BUILD_CORES is the builder's cores setting; 0 means all,
+      # which is also what the Go runtime does with an unset variable.
+      export GOMAXPROCS="''${NIX_BUILD_CORES:-0}"
       set -x
       ${nix2container-bin}/bin/nix2container ${subcommand} \
         $out/layers.json \
